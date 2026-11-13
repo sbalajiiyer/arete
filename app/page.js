@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import { supabase, api, STAGES, label, when } from '../lib/client';
+import { Logo } from './logo';
 
 const STATUS_TONE = { approved: 'green', done: 'green', awaiting_approval: 'amber', returned: 'amber', duplicate: 'amber', rejected: 'red' };
 
@@ -47,8 +48,8 @@ function Auth() {
   }
   return (
     <div className="wrap auth">
-      <h1>Idea Management</h1>
-      <p className="muted">Seven agents take every idea from capture to tracked outcome.</p>
+      <div className="row" style={{ marginBottom: 10 }}><Logo size={44} /><h1 style={{ margin: 0, fontSize: 30, letterSpacing: '0.03em' }}>Arete</h1></div>
+      <p className="muted">From idea to outcome. Seven agents do the groundwork and a person makes every decision.</p>
       <form className="card" onSubmit={submit}>
         {msg?.err && <div className="err">{msg.err}</div>}
         {msg?.ok && <div className="note">{msg.ok}</div>}
@@ -359,7 +360,7 @@ export default function Home() {
   return (
     <div className="wrap">
       <div className="top">
-        <div className="brand">Idea Management<small>{org?.name} · {session.user.email}</small></div>
+        <div className="brand">{org?.name || 'Workspace'}<small>{session.user.email}</small></div>
         <div className="tabs">
           {[['pipeline', 'Pipeline'], ['portfolio', 'Portfolio'], ['types', 'Idea types']].map(([k, l]) => (
             <button key={k} className={`tab ${tab === k ? 'on' : ''}`} onClick={() => setTab(k)}>{l}</button>

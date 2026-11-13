@@ -1,4 +1,4 @@
-# Idea Management
+# Arete
 
 Seven agents take an idea from capture to tracked outcome: Capture, Scope, Evaluate, Judge, Rank, Commit, Watch.
 A person makes every approval decision.
@@ -40,10 +40,9 @@ npm run dev
 
 ## Database
 
-The schema is not in this repository yet. It lives in the Supabase project's migration history
-(`initial_schema`, `editable_agent_config`). Tables: `orgs`, `org_members`, `idea_types`, `ideas`,
-`stage_runs`, `approvals`, `watch_updates`, `agent_configs`, `org_settings`, `org_memory`,
-`config_changes`, `eval_runs`. Every table has row-level security keyed on workspace membership.
+`supabase/migrations/` holds copies of the two migrations applied to the Supabase project
+(`initial_schema`, `editable_agent_config`). The project's own migration history is the record of
+what actually ran. Every table has row-level security keyed on workspace membership.
 
 ## Known gaps
 
