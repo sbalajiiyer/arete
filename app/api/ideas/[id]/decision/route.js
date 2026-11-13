@@ -1,3 +1,5 @@
+import { loadConfig } from '../../../../../lib/config';
+import { notify } from '../../../../../lib/notify';
 import { advance, loadIdea, log, save } from '../../../../../lib/pipeline';
 import { getContext, handle, must, HttpError } from '../../../../../lib/server';
 
@@ -12,6 +14,9 @@ export const POST = handle(async (req, { params }) => {
   if (!['admin', 'approver'].includes(ctx.role)) throw new HttpError(403, 'Only approvers can decide.');
   const idea = await loadIdea(ctx, id);
   if (idea.status !== 'awaiting_approval') throw new HttpError(409, 'This idea is not waiting for a decision.');
+  const { settings } = await loadConfig(ctx);
+  if (settings.block_self_approval && idea.created_by === ctx.user.id) throw new HttpError(403, 'This workspace does not let people decide on ideas they submitted.');
+  const origin = new URL(req.url).origin;
 
   must(await ctx.supabase.from('approvals').insert({ idea_id: id, org_id: idea.org_id, decision, comment: String(comment).slice(0, 4000) }), 'Recording the decision');
   const stages = idea.idea_types.config.stages;
@@ -22,10 +27,12 @@ export const POST = handle(async (req, { params }) => {
   let saved = await save(ctx, idea, patch);
   await log(ctx, idea, 'commit', 'Human approver', `Decision: ${decision}.${comment ? ` Comment: ${comment}` : ''}`, { decision, comment, decided_by: ctx.user.email }, null);
 
+  await notify(ctx, idea, 'decision', `Your idea was ${decision}: ${idea.title}`, comment || 'No comment was added.', { users: [idea.created_by] }, origin);
+
   let warning = null;
   if (decision === 'approved') {
     try {
-      saved = await advance(ctx, id);
+      saved = await advance(ctx, id, origin);
     } catch (e) {
       warning = `Approved, but tracking could not be set up yet: ${e.message}`;
     }

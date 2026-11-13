@@ -30,43 +30,65 @@ function Badges({ idea }) {
   );
 }
 
-function Auth() {
-  const [mode, setMode] = useState('in');
+const FRIENDLY = [
+  [/invalid login credentials/i, 'That email and password do not match.'],
+  [/email not confirmed/i, 'Confirm your email first: open the link in the message we sent you.'],
+  [/already registered/i, 'There is already an account with that email. Sign in instead.'],
+  [/rate limit|too many/i, 'Too many attempts. Wait a few minutes and try again.'],
+];
+const friendly = (m) => FRIENDLY.find(([re]) => re.test(m))?.[1] || m;
+
+// mode: in = sign in, up = create account, reset = ask for a reset link, new = choose a new password
+function Auth({ recovery, onRecovered }) {
+  const [mode, setMode] = useState(recovery ? 'new' : 'in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
+  const invited = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('invite');
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
     setMsg(null);
-    const fn = mode === 'in' ? supabase.auth.signInWithPassword({ email, password }) : supabase.auth.signUp({ email, password, options: { emailRedirectTo: window.location.origin } });
-    const { data, error } = await fn;
-    if (error) setMsg({ err: error.message });
+    const back = window.location.origin + window.location.search;
+    let res;
+    if (mode === 'in') res = await supabase.auth.signInWithPassword({ email, password });
+    else if (mode === 'up') res = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: back } });
+    else if (mode === 'reset') res = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+    else res = await supabase.auth.updateUser({ password });
+    const { data, error } = res;
+    if (error) setMsg({ err: friendly(error.message) });
     else if (mode === 'up' && !data.session) setMsg({ ok: 'Check your email for a confirmation link, then come back here and sign in.' });
+    else if (mode === 'reset') setMsg({ ok: 'If that address has an account, a link to choose a new password is on its way.' });
+    else if (mode === 'new') onRecovered();
     setBusy(false);
   }
+  const title = { in: 'Sign in', up: 'Create account', reset: 'Send reset link', new: 'Save new password' }[mode];
   return (
     <div className="wrap auth">
       <div className="row" style={{ marginBottom: 10 }}><Logo size={44} /><h1 style={{ margin: 0, fontSize: 30, letterSpacing: '0.03em' }}>Arete</h1></div>
       <p className="muted">From idea to outcome. Seven agents do the groundwork and a person makes every decision.</p>
+      {invited && mode !== 'new' && <div className="note">You have been invited to a workspace. Sign in, or create an account with the email address the invitation was sent to.</div>}
       <form className="card" onSubmit={submit}>
         {msg?.err && <div className="err">{msg.err}</div>}
         {msg?.ok && <div className="note">{msg.ok}</div>}
-        <label>Email</label>
-        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
-        <label>Password</label>
-        <input type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === 'in' ? 'current-password' : 'new-password'} />
+        {mode !== 'new' && (<><label>Email</label><input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" /></>)}
+        {mode !== 'reset' && (<><label>{mode === 'new' ? 'New password' : 'Password'}</label><input type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === 'in' ? 'current-password' : 'new-password'} /></>)}
         <div className="row" style={{ marginTop: 14 }}>
-          <button className="btn" disabled={busy}>{mode === 'in' ? 'Sign in' : 'Create account'}</button>
-          <button type="button" className="btn ghost" onClick={() => { setMode(mode === 'in' ? 'up' : 'in'); setMsg(null); }}>
-            {mode === 'in' ? 'New here? Create an account' : 'I have an account'}
-          </button>
+          <button className="btn" disabled={busy}>{title}</button>
+          {mode !== 'new' && (
+            <button type="button" className="btn ghost" onClick={() => { setMode(mode === 'in' ? 'up' : 'in'); setMsg(null); }}>
+              {mode === 'in' ? 'New here? Create an account' : 'I have an account'}
+            </button>
+          )}
         </div>
+        {mode === 'in' && <p className="small" style={{ margin: '12px 0 0' }}><a href="#" onClick={(e) => { e.preventDefault(); setMode('reset'); setMsg(null); }}>Forgot your password?</a></p>}
       </form>
     </div>
   );
 }
+
+const SAMPLE = 'Request from the head of customer service: we answer about 4,000 order-status emails a month by hand, which takes two people most of their week. Proposal: add order tracking to the customer portal so people can check for themselves. IT estimates 6 weeks of work, about $45k. We expect email volume to halve.';
 
 function NewIdea({ onClose, onDone }) {
   const [kind, setKind] = useState('text');
@@ -106,7 +128,7 @@ function NewIdea({ onClose, onDone }) {
           ))}
         </div>
         {err && <div className="err" style={{ marginTop: 10 }}>{err}</div>}
-        {kind === 'text' && (<><label>Notes, an email, a meeting transcript, or a rough idea</label><textarea value={text} onChange={(e) => setText(e.target.value)} style={{ minHeight: 170 }} /></>)}
+        {kind === 'text' && (<><label>Notes, an email, a meeting transcript, or a rough idea</label><textarea value={text} onChange={(e) => setText(e.target.value)} style={{ minHeight: 170 }} /><p className="small" style={{ margin: '6px 0 0' }}><a href="#" onClick={(e) => { e.preventDefault(); setText(SAMPLE); }}>Use a sample request</a></p></>)}
         {kind === 'url' && (<><label>Public web address</label><input type="url" placeholder="https://" value={url} onChange={(e) => setUrl(e.target.value)} /></>)}
         {kind === 'file' && (<><label>Word (.docx), Excel (.xlsx), .csv, .txt or .md, up to 3 MB</label><input type="file" accept=".docx,.xlsx,.csv,.txt,.md" onChange={(e) => setFile(e.target.files[0] || null)} /></>)}
         <div className="row" style={{ marginTop: 14 }}>
@@ -159,7 +181,8 @@ function IdeaDetail({ id, role, onBack }) {
   const next = stages[stages.indexOf(idea.stage) + 1];
   const rec = idea.record || {};
   const canDecide = ['admin', 'approver'].includes(role);
-  const canAdvance = next && ['active', 'returned'].includes(idea.status) && next !== 'watch';
+  const canWork = role !== 'submitter';
+  const canAdvance = canWork && next && ['active', 'returned'].includes(idea.status) && next !== 'watch';
 
   return (
     <div className="wrap">
@@ -215,12 +238,12 @@ function IdeaDetail({ id, role, onBack }) {
             ) : <p className="muted">Only approvers can decide.</p>}
           </>
         )}
-        {idea.status === 'approved' && idea.stage !== 'watch' && (
+        {canWork && idea.status === 'approved' && idea.stage !== 'watch' && (
           <button className="btn" disabled={!!busy} onClick={() => act('advance', () => api(`/api/ideas/${id}/advance`))}>
             {busy === 'advance' ? 'Watch agent is working…' : 'Set up tracking with the Watch agent'}
           </button>
         )}
-        {idea.stage === 'watch' && idea.status !== 'done' && (
+        {canWork && idea.stage === 'watch' && idea.status !== 'done' && (
           <>
             <p>Approved and being tracked. Post a progress update and the Watch agent will assess it against the plan.</p>
             <label>Progress update</label>
@@ -237,6 +260,7 @@ function IdeaDetail({ id, role, onBack }) {
             </div>
           </>
         )}
+        {!canWork && !['rejected', 'done'].includes(idea.status) && <p className="muted">Your idea is with the team. You will get an alert in your inbox when there is a decision.</p>}
         {idea.status === 'rejected' && <p>This idea was rejected. Its record stays here for future duplicate checks.</p>}
         {idea.status === 'done' && <p>This idea is closed. Its lessons now feed the Scope and Evaluate agents on future ideas.</p>}
       </div>
@@ -326,21 +350,38 @@ export default function Home() {
   const [openId, setOpenId] = useState(null);
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState(null);
+  const [recovery, setRecovery] = useState(false);
+  const [spaces, setSpaces] = useState([]);
+  const [inbox, setInbox] = useState([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => { if (event === 'PASSWORD_RECOVERY') setRecovery(true); setSession(s); });
     return () => sub.subscription.unsubscribe();
   }, []);
 
   const userId = session?.user?.id;
   const load = useCallback(async () => {
     if (!userId) return;
-    const [m, i, t] = await Promise.all([
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('invite')) {
+      const { data: joined, error } = await supabase.rpc('accept_invitation', { tok: q.get('invite') });
+      setNotice(error ? `Invitation: ${error.message}` : `You have joined ${joined}.`);
+      window.history.replaceState({}, '', '/');
+    }
+    if (q.get('idea')) {
+      setOpenId(q.get('idea'));
+      window.history.replaceState({}, '', '/');
+    }
+    const [m, i, t, w, n] = await Promise.all([
       supabase.from('org_members').select('role, orgs(id, name)').eq('user_id', userId).limit(1).maybeSingle(),
       supabase.from('ideas').select('id, title, summary, stage, status, score, confidence, rank, escalated, created_at, idea_types(name)').order('created_at', { ascending: false }).limit(500),
       supabase.from('idea_types').select('*').order('created_at'),
+      supabase.rpc('my_workspaces'),
+      supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(40),
     ]);
+    setSpaces(w.data || []);
+    setInbox(n.data || []);
     setOrg(m.data?.orgs || null);
     setRole(m.data?.role || 'member');
     setIdeas(i.data || []);
@@ -349,6 +390,7 @@ export default function Home() {
   useEffect(() => { load(); }, [load]);
 
   if (session === undefined) return <div className="wrap"><p className="muted">Loading…</p></div>;
+  if (recovery) return <Auth recovery onRecovered={() => setRecovery(false)} />;
   if (!session) return <Auth />;
   if (openId) return <IdeaDetail id={openId} role={role} onBack={() => { setOpenId(null); load(); }} />;
 
@@ -356,13 +398,36 @@ export default function Home() {
   const ranked = ideas.filter((i) => i.score != null && !['rejected', 'duplicate'].includes(i.status)).sort((a, b) => (a.rank ?? 9999) - (b.rank ?? 9999) || b.score - a.score);
   const escalated = ideas.filter((i) => i.escalated && i.status !== 'done');
   const waiting = ideas.filter((i) => i.status === 'awaiting_approval');
+  const unread = inbox.filter((n) => !n.read_at).length;
+  async function switchSpace(id) {
+    await supabase.rpc('set_active_workspace', { org: id });
+    setFilter(null);
+    setTab('pipeline');
+    load();
+  }
+  async function openAlert(n) {
+    if (!n.read_at) await supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', n.id);
+    if (n.idea_id) setOpenId(n.idea_id);
+    else load();
+  }
+  async function readAll() {
+    await supabase.from('notifications').update({ read_at: new Date().toISOString() }).is('read_at', null);
+    load();
+  }
 
   return (
     <div className="wrap">
       <div className="top">
-        <div className="brand">{org?.name || 'Workspace'}<small>{session.user.email}</small></div>
+        <div className="brand">
+          {spaces.length > 1 ? (
+            <select value={org?.id || ''} onChange={(e) => switchSpace(e.target.value)} style={{ fontWeight: 700, fontSize: 16, width: 'auto', maxWidth: '100%' }}>
+              {spaces.map((w) => <option key={w.org_id} value={w.org_id}>{w.name}</option>)}
+            </select>
+          ) : (org?.name || 'Workspace')}
+          <small>{session.user.email}</small>
+        </div>
         <div className="tabs">
-          {[['pipeline', 'Pipeline'], ['portfolio', 'Portfolio'], ['types', 'Idea types']].map(([k, l]) => (
+          {[['pipeline', 'Pipeline'], ['portfolio', 'Portfolio'], ['types', 'Idea types'], ['inbox', unread ? `Inbox (${unread})` : 'Inbox']].map(([k, l]) => (
             <button key={k} className={`tab ${tab === k ? 'on' : ''}`} onClick={() => setTab(k)}>{l}</button>
           ))}
           <button className="tab" onClick={() => supabase.auth.signOut()}>Sign out</button>
@@ -418,6 +483,19 @@ export default function Home() {
       )}
 
       {tab === 'types' && org && <Types org={org} role={role} types={types} reload={load} />}
+
+      {tab === 'inbox' && (
+        <div className="card">
+          <div className="row"><h2 className="grow" style={{ margin: 0 }}>Inbox</h2>{unread > 0 && <button className="btn ghost" style={{ padding: '2px 8px' }} onClick={readAll}>Mark all read</button>}</div>
+          {inbox.length === 0 && <p className="muted" style={{ marginTop: 10 }}>Nothing yet. You will be told here when an idea needs your decision, when your idea is decided, and when a tracked idea is escalated.</p>}
+          {inbox.map((n) => (
+            <button key={n.id} className="idea" onClick={() => openAlert(n)} style={{ background: 'none', border: 0, borderTop: '1px solid var(--line)', padding: '10px 0', marginTop: 10 }}>
+              <div className="row"><b className="grow" style={{ fontWeight: n.read_at ? 400 : 700 }}>{n.title}</b><span className="muted small">{when(n.created_at)}</span></div>
+              <p className="muted small" style={{ margin: '2px 0 0' }}>{n.body}</p>
+            </button>
+          ))}
+        </div>
+      )}
 
       {adding && (
         <NewIdea
