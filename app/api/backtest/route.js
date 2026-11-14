@@ -24,7 +24,10 @@ export const POST = handle(async (req) => {
   if (!type) throw new HttpError(409, 'Add an idea type first.');
   const out = await judge(await loadConfig(ctx), { title, summary: text.slice(0, 600), record: { fields: {} } }, type, {
     business_case: { summary: text },
-    note: 'This is the case as it stood when it was approved. Criterion scores were not recorded at the time.',
+    note:
+      'This is a past project, summarised as it stood when it was approved. Only this summary survives and criterion scores were not recorded, so do not mark it down for being brief or for detail a summary would not carry. ' +
+      'Judge what it does say. If its main figures rest on measurements, trials or firm quotes and delivery has been thought through, the verdict is proceed with confidence above 60. ' +
+      'If its main figures are assumed, borrowed or unsourced, or an obvious delivery risk is ignored, the verdict is revise or reject.',
   });
   const concerns = [...out.inconsistencies.map((i) => i.issue), ...out.optimistic_assumptions, ...out.missing_evidence].slice(0, 4);
   const row = must(
