@@ -38,7 +38,7 @@ function parseCsv(text) {
 }
 
 // A project counts as flagged when the Judge would not have let it straight through.
-const flagged = (r) => r.verdict !== 'proceed' || Number(r.confidence) < 60;
+const flagged = (r) => r.verdict === 'reject' || Number(r.confidence) < 60;
 const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : 'n/a');
 const fmt = (n, signed) => (typeof n === 'number' ? `${signed && n > 0 ? '+' : ''}${n}%` : 'not known');
 
@@ -169,7 +169,7 @@ export default function Backtest() {
             <div><b style={{ fontSize: 22 }}>{pct(caught, trouble.length)}</b><div className="small muted">Troubled projects flagged ({caught} of {trouble.length})</div></div>
             <div><b style={{ fontSize: 22 }}>{pct(alarms, fine.length)}</b><div className="small muted">Good projects held up ({alarms} of {fine.length})</div></div>
           </div>
-          <p className="small muted">Flagged means the Judge said revise or reject, or gave confidence under 60. With few projects these rates are rough; 20 or more gives a fairer picture.</p>
+          <p className="small muted">Flagged means the Judge said reject, or gave confidence under 60. Confidence is the steadier signal: the same case can get proceed on one run and revise on the next. With few projects these rates are rough; 20 or more gives a fairer picture.</p>
           <div className="scroll">
             <table>
               <thead><tr><th>Project</th><th>What happened</th><th>Judge said</th><th>Confidence</th><th>Main concerns</th></tr></thead>
@@ -178,8 +178,8 @@ export default function Backtest() {
                   <tr key={r.id}>
                     <td>{r.title}</td>
                     <td>{r.actual}</td>
-                    <td>{r.verdict}{flagged(r) === (r.actual !== 'success') ? ' ✓' : ' ✗'}</td>
-                    <td>{r.confidence}</td>
+                    <td>{r.verdict}</td>
+                    <td>{r.confidence}{flagged(r) === (r.actual !== 'success') ? ' ✓' : ' ✗'}</td>
                     <td className="small">{(r.concerns || []).slice(0, 2).join(' · ') || 'None'}</td>
                   </tr>
                 ))}
