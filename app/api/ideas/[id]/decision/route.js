@@ -14,6 +14,8 @@ export const POST = handle(async (req, { params }) => {
   if (!['admin', 'approver'].includes(ctx.role)) throw new HttpError(403, 'Only approvers can decide.');
   const idea = await loadIdea(ctx, id);
   if (idea.status !== 'awaiting_approval') throw new HttpError(409, 'This idea is not waiting for a decision.');
+  const named = idea.idea_types.config.approver_ids || [];
+  if (ctx.role !== 'admin' && named.length && !named.includes(ctx.user.id)) throw new HttpError(403, 'This idea type has named approvers and you are not one of them.');
   const { settings } = await loadConfig(ctx);
   if (settings.block_self_approval && idea.created_by === ctx.user.id) throw new HttpError(403, 'This workspace does not let people decide on ideas they submitted.');
   const origin = new URL(req.url).origin;

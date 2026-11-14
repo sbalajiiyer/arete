@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase, api, STAGES, label, when } from '../lib/client';
 import { Logo } from './logo';
 
+const fmtPct = (n, signed) => (typeof n === 'number' ? `${signed && n > 0 ? '+' : ''}${Math.round(n)}%` : 'not known');
+
 const STATUS_TONE = { approved: 'green', done: 'green', awaiting_approval: 'amber', returned: 'amber', duplicate: 'amber', rejected: 'red' };
 
 function Render({ value }) {
@@ -140,7 +142,7 @@ function NewIdea({ onClose, onDone }) {
   );
 }
 
-function IdeaDetail({ id, role, onBack }) {
+function IdeaDetail({ id, role, userId, onBack }) {
   const [idea, setIdea] = useState(null);
   const [runs, setRuns] = useState([]);
   const [updates, setUpdates] = useState([]);
@@ -180,7 +182,8 @@ function IdeaDetail({ id, role, onBack }) {
   const stages = type.config.stages;
   const next = stages[stages.indexOf(idea.stage) + 1];
   const rec = idea.record || {};
-  const canDecide = ['admin', 'approver'].includes(role);
+  const named = type.config.approver_ids || [];
+  const canDecide = role === 'admin' || (role === 'approver' && (!named.length || named.includes(userId)));
   const canWork = role !== 'submitter';
   const canAdvance = canWork && next && ['active', 'returned'].includes(idea.status) && next !== 'watch';
 
@@ -191,6 +194,8 @@ function IdeaDetail({ id, role, onBack }) {
         <h1>{idea.title}</h1>
         <p className="muted small">{type.name} · captured {when(idea.created_at)} from {rec.source || idea.source_kind}</p>
         <Badges idea={idea} />
+        {rec.evaluate?.evidence && <p className="small" style={{ margin: '8px 0 0' }}><b>Evidence:</b> {rec.evaluate.evidence.grounded_pct}% of the figures are measured or quoted ({rec.evaluate.evidence.measured} measured, {rec.evaluate.evidence.quoted} quoted, {rec.evaluate.evidence.estimated} estimated, {rec.evaluate.evidence.unknown} unknown).</p>}
+        {rec.outcome && <p className="small" style={{ margin: '4px 0 0' }}><b>Outcome against plan:</b> cost {fmtPct(rec.outcome.cost_variance_pct, true)}, schedule {fmtPct(rec.outcome.schedule_variance_pct, true)}, benefits delivered {fmtPct(rec.outcome.benefit_realized_pct)}.</p>}
         <p style={{ marginTop: 10 }}>{idea.summary}</p>
         <div className="out">
           <dl>
@@ -235,7 +240,7 @@ function IdeaDetail({ id, role, onBack }) {
                   ))}
                 </div>
               </>
-            ) : <p className="muted">Only approvers can decide.</p>}
+            ) : <p className="muted">{named.length ? 'Only the approvers named for this idea type can decide.' : 'Only approvers can decide.'}</p>}
           </>
         )}
         {canWork && idea.status === 'approved' && idea.stage !== 'watch' && (
@@ -296,7 +301,18 @@ function IdeaDetail({ id, role, onBack }) {
 function Types({ org, role, types, reload }) {
   const [drafts, setDrafts] = useState({});
   const [msg, setMsg] = useState(null);
+  const [approvers, setApprovers] = useState([]);
   const admin = role === 'admin';
+  useEffect(() => {
+    supabase.from('org_members').select('user_id, email, role').in('role', ['approver', 'admin']).then(({ data }) => setApprovers(data || []));
+  }, []);
+  async function toggleApprover(t, uid) {
+    const now = t.config.approver_ids || [];
+    const next = now.includes(uid) ? now.filter((x) => x !== uid) : [...now, uid];
+    const { error } = await supabase.from('idea_types').update({ config: { ...t.config, approver_ids: next } }).eq('id', t.id);
+    setMsg(error ? { err: error.message } : { ok: `Approvers updated for "${t.name}".` });
+    reload();
+  }
   async function saveType(t) {
     setMsg(null);
     try {
@@ -327,6 +343,15 @@ function Types({ org, role, types, reload }) {
           <h2>{t.name}</h2>
           <p className="muted small">{t.description}</p>
           <p className="small"><b>Path:</b> {t.config.stages.map(label).join(' → ')} · <b>Approver:</b> {t.config.approver}</p>
+          <p className="small" style={{ marginBottom: 4 }}><b>Who can decide:</b> {(t.config.approver_ids || []).length ? 'only the people ticked below, plus admins' : 'any approver or admin (tick names to restrict)'}</p>
+          <div className="row" style={{ marginBottom: 8 }}>
+            {approvers.map((m) => (
+              <label key={m.user_id} style={{ display: 'flex', gap: 6, alignItems: 'center', margin: 0, color: 'var(--ink)' }}>
+                <input type="checkbox" style={{ width: 'auto' }} disabled={!admin} checked={(t.config.approver_ids || []).includes(m.user_id)} onChange={() => toggleApprover(t, m.user_id)} />
+                {m.email || 'Member'}{m.role === 'admin' ? ' (admin)' : ''}
+              </label>
+            ))}
+          </div>
           <details>
             <summary className="small" style={{ cursor: 'pointer', color: 'var(--accent)' }}>{admin ? 'Edit settings' : 'View settings'}</summary>
             <textarea className="mono" readOnly={!admin} value={drafts[t.id] ?? JSON.stringify(t.config, null, 2)} onChange={(e) => setDrafts({ ...drafts, [t.id]: e.target.value })} style={{ marginTop: 8 }} />
@@ -392,7 +417,7 @@ export default function Home() {
   if (session === undefined) return <div className="wrap"><p className="muted">Loading…</p></div>;
   if (recovery) return <Auth recovery onRecovered={() => setRecovery(false)} />;
   if (!session) return <Auth />;
-  if (openId) return <IdeaDetail id={openId} role={role} onBack={() => { setOpenId(null); load(); }} />;
+  if (openId) return <IdeaDetail id={openId} role={role} userId={session.user.id} onBack={() => { setOpenId(null); load(); }} />;
 
   const shown = filter ? ideas.filter((i) => i.stage === filter) : ideas;
   const ranked = ideas.filter((i) => i.score != null && !['rejected', 'duplicate'].includes(i.status)).sort((a, b) => (a.rank ?? 9999) - (b.rank ?? 9999) || b.score - a.score);

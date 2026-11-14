@@ -20,6 +20,7 @@ export default function RootLayout({ children }) {
             <span style={{ color: '#fff', fontWeight: 700, fontSize: 17, letterSpacing: '0.04em' }}>Arete</span>
           </a>
           <a href="/" style={link}>Pipeline</a>
+          <a href="/backtest" style={link}>Backtest</a>
           <a href="/team" style={link}>Team</a>
           <a href="/how" style={link}>How it works</a>
         </nav>

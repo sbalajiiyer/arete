@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase, when } from '../../lib/client';
 import { DEFAULT_SETTINGS } from '../../lib/defaults';
 
@@ -20,6 +20,7 @@ export default function Team() {
   const [selfBlock, setSelfBlock] = useState(false);
   const [newKey, setNewKey] = useState(null);
   const [msg, setMsg] = useState(null);
+  const edited = useRef(false); // unsaved settings are not overwritten when other actions reload the page data
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -39,8 +40,10 @@ export default function Team() {
     ]);
     const settings = { ...DEFAULT_SETTINGS, ...(st.data?.settings || {}) };
     setD({ org: me.data?.orgs, role: me.data?.role, members: members.data || [], invites: invites.data || [], settings, keyAt: key.data?.created_at });
-    setHook(settings.webhook_url || '');
-    setSelfBlock(!!settings.block_self_approval);
+    if (!edited.current) {
+      setHook(settings.webhook_url || '');
+      setSelfBlock(!!settings.block_self_approval);
+    }
   }, [userId]);
   useEffect(() => { load(); }, [load]);
 
@@ -86,6 +89,7 @@ export default function Team() {
     const next = { ...d.settings, webhook_url: url, block_self_approval: selfBlock };
     const { error } = await supabase.from('org_settings').upsert({ org_id: d.org.id, settings: next, updated_at: new Date().toISOString() });
     if (!error) await log('Workspace settings', { webhook: !!d.settings.webhook_url, block_self_approval: d.settings.block_self_approval }, { webhook: !!url, block_self_approval: selfBlock });
+    if (!error) edited.current = false;
     done(error, 'Workspace settings saved.');
   }
   async function rotate() {
@@ -149,9 +153,9 @@ export default function Team() {
           <h2>Alerts and approvals</h2>
           <p className="small muted">Everyone gets alerts in their Arete inbox. Add a webhook to also post them to a Teams or Slack channel.</p>
           <label>Teams workflow or Slack incoming webhook address</label>
-          <input type="url" placeholder="https://" value={hook} onChange={(e) => setHook(e.target.value)} />
+          <input type="url" placeholder="https://" value={hook} onChange={(e) => { edited.current = true; setHook(e.target.value); }} />
           <label style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'var(--ink)', fontSize: 15, marginTop: 14 }}>
-            <input type="checkbox" checked={selfBlock} onChange={(e) => setSelfBlock(e.target.checked)} style={{ width: 'auto' }} />
+            <input type="checkbox" checked={selfBlock} onChange={(e) => { edited.current = true; setSelfBlock(e.target.checked); }} style={{ width: 'auto' }} />
             Stop people deciding on ideas they submitted themselves
           </label>
           <div style={{ marginTop: 12 }}><button className="btn" onClick={saveSettings}>Save</button></div>
